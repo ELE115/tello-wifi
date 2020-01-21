@@ -1,0 +1,75 @@
+#!/usr/bin/bash
+
+set -u
+
+INTERFACE="$(ip link show | awk '/: w/ { gsub(/:/,"",$2); print $2; exit; }')"
+W="wpa_cli -i $INTERFACE"
+while true; do
+    R="$($W scan)"
+    printf 'scan: %q\n' "$R"
+    if [ ! "$R" = 'OK' ]; then
+        sleep 1
+        continue
+    fi
+    sleep 8
+    TARGETS="$($W scan_results | awk '/TELLO-/ { print $5; }')"
+    if [ -z "$TARGETS" ]; then
+        echo 'Nothing to do'
+        sleep 2
+    else
+        printf 'Found:'
+        printf ' %q' "$TARGETS"
+        printf '\n'
+        for TARGET in $TARGETS ; do
+            printf 'Connecting \x1b[1;35m%q\x1b[0m\n' "$TARGET"
+            ID="$($W add_network)"
+            printf 'add_network: %q\n' "$ID"
+            sleep 1
+            R="$($W set_network "$ID" ssid "\"$TARGET\"")"
+            printf 'set_network %q ssid %q: %q\n' "$ID" "$TARGET" "$R"
+            R="$($W set_network "$ID" key_mgmt NONE)"
+            printf 'set_network %q key_mgmt NONE: %q\n' "$ID" "$R"
+            R="$($W set_network "$ID" priority 114514)"
+            printf 'set_network %q priority 114514: %q\n' "$ID" "$R"
+            R="$($W enable_network "$ID")"
+            printf 'enable_network %q: %q\n' "$ID" "$R"
+            R="$($W reassociate)"
+            printf 'reassociate: %q\n' "$R"
+            printf 'waiting for connection '
+            I=10
+            while [ -z "$($W status | grep "^ssid=$TARGET\$")" ]; do
+                printf '.'
+                I=$(($I-1))
+                sleep 1
+                if [ "$I" -eq 0 ]; then
+                    break
+                fi
+            done
+            if [ "$I" -eq 0 ]; then
+              echo 'Failed to connect, give up'
+            else
+              printf '\n'
+              $W status
+              ip addr add 192.168.10.233/24 broadcast + dev "$INTERFACE"
+              printf 'ip addr add 192.168.10.233/24 broadcast + dev %q: %d\n' "$INTERFACE" "$?"
+              sleep 1
+              printf 'nodejs'
+              printf ' %q' "$@"
+              printf '\n'
+              node index.js "$@"
+              printf 'nodejs: %d\n' "$?"
+              ip addr del 192.168.10.233/24 dev "$INTERFACE"
+              printf 'ip addr del 192.168.10.233/24 dev %q: %d\n' "$INTERFACE" "$?"
+            fi
+            R="$($W disconnect)"
+            printf 'disconnect: %q\n' "$R"
+            R="$($W remove_network "$ID")"
+            printf 'remove_network: %q\n' "$R"
+        done
+        R="$($W reconnect)"
+        printf 'reconnect: %q\n' "$R"
+        sleep 7
+        $W status
+        sleep 11
+    fi
+done
