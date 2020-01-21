@@ -4,5 +4,8 @@
   "description": "",
   "main": "index.js",
   "author": "b1f6c1c4 <b1f6c1c4@gmail.com>",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "wpa_supplicant": "^1.0.2"
+  }
 }
